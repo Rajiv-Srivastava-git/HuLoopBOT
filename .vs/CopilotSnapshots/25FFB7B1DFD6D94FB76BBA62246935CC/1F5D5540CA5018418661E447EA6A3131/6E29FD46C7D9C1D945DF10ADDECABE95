@@ -1,0 +1,321 @@
+﻿using HuLoopBOT.Utilities;
+using Microsoft.Win32;
+using System.Diagnostics;
+
+namespace HuLoopBOT.Services;
+
+/// <summary>
+/// Service to verify and diagnose system configuration status
+/// </summary>
+public class SystemVerificationService
+{
+    public class VerificationResult
+    {
+        public string Setting { get; set; } = "";
+        public bool IsConfigured { get; set; }
+        public string Status { get; set; } = "";
+        public string Details { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Verify all machine readiness settings
+    /// </summary>
+    public List<VerificationResult> VerifyAllSettings()
+    {
+        var results = new List<VerificationResult>();
+
+        results.Add(VerifyAutoLogin());
+        results.Add(VerifyLockScreen());
+        results.Add(VerifyScreenSaver());
+        results.Add(VerifySleep());
+        results.Add(VerifyRdpTimeouts());
+
+        return results;
+    }
+
+    /// <summary>
+    /// Verify Auto Login configuration
+    /// </summary>
+    public VerificationResult VerifyAutoLogin()
+    {
+        try
+        {
+            var winlogonPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon";
+
+            using (var key = Registry.LocalMachine.OpenSubKey(winlogonPath))
+            {
+                if (key == null)
+                {
+                    return new VerificationResult
+                    {
+                        Setting = "Auto Login",
+                        IsConfigured = false,
+                        Status = "ERROR",
+                        Details = "Cannot access Winlogon registry key"
+                    };
+                }
+
+                var autoAdminLogon = key.GetValue("AutoAdminLogon") as string;
+                var username = key.GetValue("DefaultUserName") as string;
+                var domain = key.GetValue("DefaultDomainName") as string;
+                var password = key.GetValue("DefaultPassword") as string;
+
+                Logger.LogVerbose($"Auto Login Check - AutoAdminLogon: '{autoAdminLogon}', Username: '{username}', Domain: '{domain}', HasPassword: {!string.IsNullOrEmpty(password)}");
+
+                bool isEnabled = autoAdminLogon == "1" &&
+                !string.IsNullOrEmpty(username) &&
+                   !string.IsNullOrEmpty(password);
+
+                return new VerificationResult
+                {
+                    Setting = "Auto Login",
+                    IsConfigured = isEnabled,
+                    Status = isEnabled ? "ENABLED" : "DISABLED",
+                    Details = isEnabled ? $"User: {domain}\\{username}" : $"AutoAdminLogon='{autoAdminLogon}', Username='{username}'"
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error verifying auto login", ex);
+            return new VerificationResult
+            {
+                Setting = "Auto Login",
+                IsConfigured = false,
+                Status = "ERROR",
+                Details = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Verify Lock Screen configuration
+    /// </summary>
+    public VerificationResult VerifyLockScreen()
+    {
+        try
+        {
+            var results = new List<string>();
+
+            // Check NoLockScreen
+            var personalizationPath = @"SOFTWARE\Policies\Microsoft\Windows\Personalization";
+            using (var key = Registry.LocalMachine.OpenSubKey(personalizationPath))
+            {
+                var noLockScreen = key?.GetValue("NoLockScreen");
+                results.Add($"NoLockScreen={(noLockScreen?.ToString() ?? "not set")}");
+            }
+
+            // Check DisableLockWorkstation
+            var systemPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
+            using (var key = Registry.LocalMachine.OpenSubKey(systemPath))
+            {
+                var disableLock = key?.GetValue("DisableLockWorkstation");
+                results.Add($"DisableLockWorkstation={(disableLock?.ToString() ?? "not set")}");
+            }
+
+            return new VerificationResult
+            {
+                Setting = "Lock Screen",
+                IsConfigured = true,
+                Status = "CHECK MANUALLY",
+                Details = string.Join(", ", results)
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error verifying lock screen", ex);
+            return new VerificationResult
+            {
+                Setting = "Lock Screen",
+                IsConfigured = false,
+                Status = "ERROR",
+                Details = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Verify Screen Saver configuration
+    /// </summary>
+    public VerificationResult VerifyScreenSaver()
+    {
+        try
+        {
+            var desktopPath = @"Control Panel\Desktop";
+            using (var key = Registry.CurrentUser.OpenSubKey(desktopPath))
+            {
+                if (key == null)
+                {
+                    return new VerificationResult
+                    {
+                        Setting = "Screen Saver",
+                        IsConfigured = false,
+                        Status = "ERROR",
+                        Details = "Cannot access Desktop registry key"
+                    };
+                }
+
+                var screenSaveActive = key.GetValue("ScreenSaveActive") as string;
+                var screenSaveTimeout = key.GetValue("ScreenSaveTimeout") as string;
+                var screenSaverIsSecure = key.GetValue("ScreenSaverIsSecure") as string;
+
+                bool isDisabled = screenSaveActive == "0" || screenSaveTimeout == "0";
+
+                return new VerificationResult
+                {
+                    Setting = "Screen Saver",
+                    IsConfigured = isDisabled,
+                    Status = isDisabled ? "DISABLED" : "ENABLED",
+                    Details = $"Active={screenSaveActive}, Timeout={screenSaveTimeout}, Secure={screenSaverIsSecure}"
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error verifying screen saver", ex);
+            return new VerificationResult
+            {
+                Setting = "Screen Saver",
+                IsConfigured = false,
+                Status = "ERROR",
+                Details = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Verify Sleep configuration
+    /// </summary>
+    public VerificationResult VerifySleep()
+    {
+        try
+        {
+            // Get power configuration using powercfg
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powercfg",
+                Arguments = "/query",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                // Parse output for sleep settings
+                bool hasAcSleep = output.Contains("Hibernate After (seconds): 0") ||
+                     output.Contains("Sleep After (seconds): 0");
+
+                return new VerificationResult
+                {
+                    Setting = "Sleep & Hibernate",
+                    IsConfigured = hasAcSleep,
+                    Status = hasAcSleep ? "DISABLED" : "CHECK MANUALLY",
+                    Details = "Use 'powercfg /query' to verify settings"
+                };
+            }
+
+            return new VerificationResult
+            {
+                Setting = "Sleep & Hibernate",
+                IsConfigured = false,
+                Status = "UNKNOWN",
+                Details = "Unable to query power settings"
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error verifying sleep settings", ex);
+            return new VerificationResult
+            {
+                Setting = "Sleep & Hibernate",
+                IsConfigured = false,
+                Status = "ERROR",
+                Details = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Verify RDP Timeout configuration
+    /// </summary>
+    public VerificationResult VerifyRdpTimeouts()
+    {
+        try
+        {
+            var terminalServicesPath = @"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services";
+            using (var key = Registry.LocalMachine.OpenSubKey(terminalServicesPath))
+            {
+                if (key == null)
+                {
+                    return new VerificationResult
+                    {
+                        Setting = "RDP Timeouts",
+                        IsConfigured = false,
+                        Status = "NOT CONFIGURED",
+                        Details = "Terminal Services policy key does not exist"
+                    };
+                }
+
+                var maxIdleTime = key.GetValue("MaxIdleTime");
+                var maxDisconnectionTime = key.GetValue("MaxDisconnectionTime");
+                var maxConnectionTime = key.GetValue("MaxConnectionTime");
+
+                bool isDisabled = (maxIdleTime?.ToString() == "0") &&
+             (maxDisconnectionTime?.ToString() == "0") &&
+         (maxConnectionTime?.ToString() == "0");
+
+                return new VerificationResult
+                {
+                    Setting = "RDP Timeouts",
+                    IsConfigured = isDisabled,
+                    Status = isDisabled ? "DISABLED" : "ENABLED",
+                    Details = $"Idle={maxIdleTime}, Disconnected={maxDisconnectionTime}, Connection={maxConnectionTime}"
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error verifying RDP timeouts", ex);
+            return new VerificationResult
+            {
+                Setting = "RDP Timeouts",
+                IsConfigured = false,
+                Status = "ERROR",
+                Details = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Generate detailed report
+    /// </summary>
+    public string GenerateReport()
+    {
+        var results = VerifyAllSettings();
+        var report = "===== SYSTEM CONFIGURATION VERIFICATION =====\n\n";
+
+        foreach (var result in results)
+        {
+            var icon = result.IsConfigured ? "✓" : "✗";
+            var statusColor = result.IsConfigured ? "OK" : "NEEDS ATTENTION";
+
+            report += $"{icon} {result.Setting}\n";
+            report += $" Status: {result.Status}\n";
+            report += $" Details: {result.Details}\n\n";
+        }
+
+        var successCount = results.Count(r => r.IsConfigured);
+        var totalCount = results.Count;
+
+        report += $"===== SUMMARY =====\n";
+        report += $"Configured: {successCount}/{totalCount}\n";
+        report += $"Completion: {(successCount * 100 / totalCount)}%\n";
+
+        return report;
+    }
+}

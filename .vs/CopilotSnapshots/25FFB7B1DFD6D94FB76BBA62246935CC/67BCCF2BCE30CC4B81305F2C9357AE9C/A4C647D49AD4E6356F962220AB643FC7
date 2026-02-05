@@ -1,0 +1,57 @@
+﻿using System.Diagnostics;
+using System.Security.Principal;
+using HuLoopBOT.Utilities;
+
+namespace HuLoopBOT;
+
+internal static class Program
+{
+    [STAThread]
+    static void Main()
+    {
+        Logger.LogVerbose("Application starting");
+        
+        if (!IsAdmin())
+        {
+            Logger.LogWarning("Application not running as administrator. Attempting to restart with elevated privileges.");
+            
+            var psi = new ProcessStartInfo
+            {
+                FileName = Application.ExecutablePath,
+                UseShellExecute = true,
+                Verb = "runas"
+            };
+            
+            try
+            {
+                Process.Start(psi);
+                Logger.LogVerbose("Elevated process started successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Failed to start elevated process", ex);
+            }
+      
+            return;
+        }
+
+        Logger.LogInformation("HuLoopBOT application started with administrator privileges");
+        Logger.LogVerbose($"Executable path: {Application.ExecutablePath}");
+        
+        ApplicationConfiguration.Initialize();
+        Application.Run(new MainForm());
+        
+        Logger.LogVerbose("Application shutting down");
+    }
+
+    static bool IsAdmin()
+    {
+        using var id = WindowsIdentity.GetCurrent();
+        var p = new WindowsPrincipal(id);
+        var isAdmin = p.IsInRole(WindowsBuiltInRole.Administrator);
+   
+        Logger.LogVerbose($"Administrator check: {isAdmin}");
+        
+        return isAdmin;
+    }
+}

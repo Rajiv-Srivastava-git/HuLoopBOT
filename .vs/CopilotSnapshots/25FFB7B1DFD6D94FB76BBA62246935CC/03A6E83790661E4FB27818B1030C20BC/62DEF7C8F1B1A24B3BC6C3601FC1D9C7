@@ -1,0 +1,473 @@
+﻿using HuLoopBOT.Utilities;
+using System.DirectoryServices;
+using System.DirectoryServices.AccountManagement;
+using System.Security.Principal;
+using Microsoft.Win32;
+
+namespace HuLoopBOT.Services;
+
+/// <summary>
+/// Service for managing and retrieving all user accounts associated with the machine
+/// </summary>
+public class UserManagementService
+{
+    /// <summary>
+    /// Gets all users associated with this machine (local + domain + cached profiles)
+    /// </summary>
+    public List<LocalUser> GetAllUsers()
+    {
+        var users = new List<LocalUser>();
+        var uniqueUsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+ Logger.LogVerbose("Retrieving all users associated with this machine");
+
+            // 1. Get local machine users
+       var localUsers = GetLocalMachineUsers();
+         foreach (var user in localUsers)
+            {
+  if (uniqueUsers.Add(user.Username))
+                {
+      users.Add(user);
+     }
+            }
+
+    // 2. Get domain users (if machine is domain-joined)
+            var domainUsers = GetDomainUsers();
+    foreach (var user in domainUsers)
+            {
+                string fullUsername = string.IsNullOrEmpty(user.Domain) ? user.Username : $"{user.Domain}\\{user.Username}";
+ if (uniqueUsers.Add(fullUsername))
+    {
+         users.Add(user);
+    }
+            }
+
+            // 3. Get users from profile list (users who have logged into this machine)
+    var profileUsers = GetProfileUsers();
+            foreach (var user in profileUsers)
+ {
+       if (uniqueUsers.Add(user.Username))
+                {
+   users.Add(user);
+             }
+  }
+
+  Logger.LogInformation($"Retrieved {users.Count} total users (local + domain + profiles)");
+     }
+   catch (Exception ex)
+        {
+       Logger.LogError("Failed to retrieve all users", ex);
+        }
+
+        // Sort by username
+        return users.OrderBy(u => u.Username).ToList();
+    }
+
+    /// <summary>
+    /// Gets local machine users only
+    /// </summary>
+    private List<LocalUser> GetLocalMachineUsers()
+    {
+      var users = new List<LocalUser>();
+
+        try
+        {
+      Logger.LogVerbose("Retrieving local machine users");
+
+ using var machine = new DirectoryEntry("WinNT://" + Environment.MachineName);
+ 
+          foreach (DirectoryEntry child in machine.Children)
+   {
+              if (child.SchemaClassName == "User")
+              {
+ try
+         {
+    string username = child.Name;
+              string fullName = child.Properties["FullName"].Value?.ToString() ?? "";
+   bool isEnabled = true;
+
+              if (child.Properties.Contains("UserFlags"))
+   {
+          int flags = (int)child.Properties["UserFlags"].Value;
+    isEnabled = (flags & 0x0002) == 0;
+       }
+
+  var user = new LocalUser
+         {
+     Username = username,
+       FullName = fullName,
+        IsEnabled = isEnabled,
+            UserType = "Local",
+       Domain = Environment.MachineName,
+      MachineName = Environment.MachineName
+   };
+
+     users.Add(user);
+                Logger.LogVerbose($"Found local user: {username} ({fullName}) - Enabled: {isEnabled}");
+   }
+         catch (Exception ex)
+        {
+ Logger.LogVerbose($"Could not read local user details for {child.Name}: {ex.Message}");
+         }
+ }
+     }
+
+     Logger.LogVerbose($"Retrieved {users.Count} local machine users");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Failed to retrieve local machine users", ex);
+        }
+
+        return users;
+    }
+
+    /// <summary>
+    /// Gets domain users (if machine is domain-joined)
+    /// </summary>
+    private List<LocalUser> GetDomainUsers()
+    {
+        var users = new List<LocalUser>();
+
+        try
+        {
+  // Check if machine is domain-joined
+  string domain = Environment.UserDomainName;
+            string machineName = Environment.MachineName;
+
+            if (domain.Equals(machineName, StringComparison.OrdinalIgnoreCase))
+ {
+        Logger.LogVerbose("Machine is not domain-joined, skipping domain user retrieval");
+       return users;
+         }
+
+         Logger.LogVerbose($"Machine is domain-joined to: {domain}");
+            Logger.LogVerbose("Retrieving domain users");
+
+      using (var context = new PrincipalContext(ContextType.Domain, domain))
+  {
+                using (var searcher = new PrincipalSearcher(new UserPrincipal(context)))
+    {
+ int count = 0;
+   int maxUsers = 100; // Limit domain users to avoid performance issues
+
+           foreach (var result in searcher.FindAll())
+     {
+   if (result is UserPrincipal userPrincipal)
+            {
+         try
+     {
+        var user = new LocalUser
+           {
+    Username = userPrincipal.SamAccountName ?? userPrincipal.Name ?? "",
+    FullName = userPrincipal.DisplayName ?? userPrincipal.Name ?? "",
+        IsEnabled = userPrincipal.Enabled ?? true,
+             UserType = "Domain",
+  Domain = domain,
+          MachineName = Environment.MachineName
+          };
+
+    users.Add(user);
+               Logger.LogVerbose($"Found domain user: {domain}\\{user.Username} ({user.FullName})");
+
+        count++;
+        if (count >= maxUsers)
+       {
+  Logger.LogWarning($"Reached maximum domain user limit ({maxUsers}), stopping enumeration");
+  break;
+          }
+     }
+  catch (Exception ex)
+              {
+   Logger.LogVerbose($"Could not read domain user details: {ex.Message}");
+     }
+            }
+  }
+      }
+  }
+
+     Logger.LogVerbose($"Retrieved {users.Count} domain users");
+      }
+        catch (Exception ex)
+        {
+            Logger.LogVerbose($"Could not retrieve domain users: {ex.Message}");
+        }
+
+        return users;
+    }
+
+    /// <summary>
+    /// Gets users from Windows profile list (users who have logged into this machine)
+    /// </summary>
+    private List<LocalUser> GetProfileUsers()
+    {
+        var users = new List<LocalUser>();
+
+        try
+        {
+          Logger.LogVerbose("Retrieving users from profile list");
+
+            const string profileListPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList";
+
+            using (var profileList = Registry.LocalMachine.OpenSubKey(profileListPath))
+ {
+        if (profileList != null)
+       {
+           foreach (var sidString in profileList.GetSubKeyNames())
+            {
+            try
+          {
+        // Skip system profiles
+     if (sidString.EndsWith("_Classes") || sidString.Length < 10)
+         continue;
+
+             using (var profileKey = profileList.OpenSubKey(sidString))
+                {
+         if (profileKey != null)
+               {
+  string? profilePath = profileKey.GetValue("ProfileImagePath") as string;
+
+       if (!string.IsNullOrEmpty(profilePath))
+      {
+         try
+      {
+        // Convert SID to username
+           var sid = new SecurityIdentifier(sidString);
+           var account = sid.Translate(typeof(NTAccount)) as NTAccount;
+
+     if (account != null)
+            {
+      string fullUsername = account.Value;
+          string username = fullUsername;
+         string domain = "";
+
+        // Parse domain\username
+  if (fullUsername.Contains('\\'))
+    {
+             var parts = fullUsername.Split('\\');
+       domain = parts[0];
+   username = parts[1];
+     }
+
+               var user = new LocalUser
+          {
+   Username = fullUsername,
+             FullName = username,
+             IsEnabled = true,
+UserType = string.IsNullOrEmpty(domain) ? "Local" : "Domain",
+     Domain = domain,
+                MachineName = Environment.MachineName
+       };
+
+                  users.Add(user);
+     Logger.LogVerbose($"Found profile user: {fullUsername}");
+   }
+   }
+       catch (Exception ex)
+    {
+      Logger.LogVerbose($"Could not translate SID {sidString}: {ex.Message}");
+      }
+              }
+                }
+          }
+        }
+    catch (Exception ex)
+   {
+           Logger.LogVerbose($"Could not read profile for SID {sidString}: {ex.Message}");
+   }
+        }
+      }
+    }
+
+         Logger.LogVerbose($"Retrieved {users.Count} users from profile list");
+        }
+        catch (Exception ex)
+   {
+            Logger.LogError("Failed to retrieve profile users", ex);
+        }
+
+        return users;
+    }
+
+    /// <summary>
+    /// Gets all local user accounts on the system (backward compatibility)
+    /// </summary>
+    public List<LocalUser> GetLocalUsers()
+    {
+ return GetAllUsers();
+    }
+
+    /// <summary>
+    /// Gets the currently logged-in user
+    /// </summary>
+    public LocalUser? GetCurrentUser()
+    {
+     try
+  {
+    string currentUsername = Environment.UserName;
+  string currentDomain = Environment.UserDomainName;
+            string fullUsername = $"{currentDomain}\\{currentUsername}";
+
+            Logger.LogVerbose($"Current user: {fullUsername}");
+
+ var allUsers = GetAllUsers();
+
+            // Try to find by full domain\username first
+            var user = allUsers.FirstOrDefault(u =>
+       u.Username.Equals(fullUsername, StringComparison.OrdinalIgnoreCase));
+
+  // If not found, try just username
+       if (user == null)
+            {
+     user = allUsers.FirstOrDefault(u =>
+          u.Username.Equals(currentUsername, StringComparison.OrdinalIgnoreCase));
+            }
+
+       return user;
+        }
+ catch (Exception ex)
+        {
+         Logger.LogError("Failed to get current user", ex);
+    return null;
+   }
+    }
+
+    /// <summary>
+    /// Gets active session users (users currently logged in)
+    /// </summary>
+    public List<SessionUser> GetActiveSessionUsers()
+ {
+        var sessionUsers = new List<SessionUser>();
+
+        try
+      {
+            Logger.LogVerbose("Retrieving active session users");
+
+       var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+           FileName = "query",
+        Arguments = "user",
+RedirectStandardOutput = true,
+     RedirectStandardError = true,
+       UseShellExecute = false,
+    CreateNoWindow = true
+            };
+
+       using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process != null)
+      {
+     string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+              var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+         for (int i = 1; i < lines.Length; i++)
+      {
+      try
+         {
+           var line = lines[i];
+   var parts = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+ if (parts.Length >= 3)
+   {
+        string username = parts[0].TrimStart('>').Trim();
+ string sessionName = parts[1];
+      int sessionId = int.Parse(parts[2]);
+                  string state = parts.Length > 3 ? parts[3] : "Unknown";
+
+var sessionUser = new SessionUser
+        {
+            Username = username,
+            SessionName = sessionName,
+         SessionId = sessionId,
+           State = state,
+          IsCurrentSession = line.StartsWith(">
+              };
+
+      sessionUsers.Add(sessionUser);
+     Logger.LogVerbose($"Active session: {username} (ID: {sessionId}, State: {state})");
+        }
+     }
+   catch (Exception ex)
+         {
+              Logger.LogVerbose($"Could not parse session line: {ex.Message}");
+  }
+ }
+            }
+
+            Logger.LogInformation($"Retrieved {sessionUsers.Count} active session users");
+  }
+        catch (Exception ex)
+      {
+            Logger.LogError("Failed to retrieve active session users", ex);
+        }
+
+      return sessionUsers;
+    }
+
+    /// <summary>
+    /// Checks if a user exists on the system
+    /// </summary>
+    public bool UserExists(string username)
+    {
+        try
+   {
+          var users = GetAllUsers();
+         return users.Any(u => u.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+ }
+        catch (Exception ex)
+        {
+   Logger.LogError($"Failed to check if user exists: {username}", ex);
+    return false;
+        }
+    }
+}
+
+/// <summary>
+/// Represents a user account associated with the machine
+/// </summary>
+public class LocalUser
+{
+    public string Username { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public bool IsEnabled { get; set; }
+    public string UserType { get; set; } = "Local"; // "Local", "Domain", or "Profile"
+ public string Domain { get; set; } = "";
+  public string MachineName { get; set; } = "";
+
+    public string DisplayName
+    {
+        get
+        {
+      string name = string.IsNullOrWhiteSpace(FullName) ? Username : $"{Username} ({FullName})";
+     
+            if (!string.IsNullOrEmpty(Domain) && !Domain.Equals(MachineName, StringComparison.OrdinalIgnoreCase))
+      {
+     return $"{name} [{UserType}]";
+  }
+   
+  return name;
+        }
+    }
+
+    public override string ToString() => DisplayName;
+}
+
+/// <summary>
+/// Represents a user with an active Windows session
+/// </summary>
+public class SessionUser
+{
+    public string Username { get; set; } = "";
+    public string SessionName { get; set; } = "";
+    public int SessionId { get; set; }
+    public string State { get; set; } = "";
+    public bool IsCurrentSession { get; set; }
+
+    public string DisplayName => IsCurrentSession
+      ? $"{Username} (Session {SessionId}) - Current"
+   : $"{Username} (Session {SessionId})";
+
+    public override string ToString() => DisplayName;
+}

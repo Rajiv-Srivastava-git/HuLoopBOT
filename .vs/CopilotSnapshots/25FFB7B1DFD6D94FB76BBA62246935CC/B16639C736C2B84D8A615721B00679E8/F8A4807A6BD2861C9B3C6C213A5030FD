@@ -1,0 +1,98 @@
+﻿namespace HuLoopBOT;
+
+partial class MainForm
+{
+    private System.ComponentModel.IContainer components = null;
+    private Label lblAdminStatus;
+    private Button btnDisableSleep;
+    private Button btnDisableLock;
+    private Button btnPreventRdpTimeout;
+    private Button btnTransferSession;
+    private Button btnRestartAsAdmin;
+    private Label lblInfo;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && (components != null))
+            components.Dispose();
+        base.Dispose(disposing);
+    }
+
+    private void InitializeComponent()
+    {
+        lblAdminStatus = new Label();
+        btnDisableSleep = new Button();
+        btnDisableLock = new Button();
+        btnPreventRdpTimeout = new Button();
+        btnTransferSession = new Button();
+        btnRestartAsAdmin = new Button();
+        lblInfo = new Label();
+
+        // lblAdminStatus
+        lblAdminStatus.Location = new Point(20, 20);
+        lblAdminStatus.Size = new Size(360, 30);
+        lblAdminStatus.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+
+        // lblInfo
+        lblInfo.Location = new Point(20, 55);
+        lblInfo.Size = new Size(360, 40);
+        lblInfo.Font = new Font("Segoe UI", 8.5F);
+        lblInfo.ForeColor = Color.Gray;
+        lblInfo.Text = "Administrator privileges are required to modify system settings.";
+
+        // btnRestartAsAdmin
+        btnRestartAsAdmin.Text = "🔒 Restart as Administrator";
+        btnRestartAsAdmin.Location = new Point(20, 105);
+        btnRestartAsAdmin.Size = new Size(200, 35);
+        btnRestartAsAdmin.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        btnRestartAsAdmin.BackColor = Color.FromArgb(0, 120, 215);
+        btnRestartAsAdmin.ForeColor = Color.White;
+        btnRestartAsAdmin.FlatStyle = FlatStyle.Flat;
+        btnRestartAsAdmin.FlatAppearance.BorderSize = 0;
+        btnRestartAsAdmin.Click += btnRestartAsAdmin_Click;
+
+        // btnDisableSleep
+        btnDisableSleep.Text = "Disable Sleep";
+        btnDisableSleep.Location = new Point(20, 155);
+        btnDisableSleep.Size = new Size(360, 35);
+        btnDisableSleep.Click += btnDisableSleep_Click;
+
+        // btnDisableLock
+        btnDisableLock.Text = "Disable Lock Screen";
+        btnDisableLock.Location = new Point(20, 200);
+        btnDisableLock.Size = new Size(360, 35);
+        btnDisableLock.Click += btnDisableLock_Click;
+
+        // btnPreventRdpTimeout
+        btnPreventRdpTimeout.Text = "Prevent RDP Timeout";
+        btnPreventRdpTimeout.Location = new Point(20, 245);
+        btnPreventRdpTimeout.Size = new Size(360, 35);
+        btnPreventRdpTimeout.Click += btnPreventRdpTimeout_Click;
+
+        // btnTransferSession
+        btnTransferSession.Text = "Transfer Session";
+        btnTransferSession.Location = new Point(20, 290);
+        btnTransferSession.Size = new Size(360, 35);
+        btnTransferSession.Click += btnTransferSession_Click;
+
+        // MainForm
+        Controls.Add(lblAdminStatus);
+        Controls.Add(lblInfo);
+        Controls.Add(btnRestartAsAdmin);
+        Controls.Add(btnDisableSleep);
+        Controls.Add(btnDisableLock);
+        Controls.Add(btnPreventRdpTimeout);
+        Controls.Add(btnTransferSession);
+
+        Text = "HuLoop BOT";
+        ClientSize = new Size(400, 350);
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        MaximizeBox = false;
+        StartPosition = FormStartPosition.CenterScreen;
+    }
+
+    private void btnRestartAsAdmin_Click(object sender, EventArgs e)
+    {
+        RestartAsAdmin();
+    }
+}

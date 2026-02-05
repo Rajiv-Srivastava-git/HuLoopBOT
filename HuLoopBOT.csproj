@@ -1,0 +1,109 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Exclude ALL ServiceHost files from main project compilation -->
+  <ItemGroup>
+ <Compile Remove="ServiceHost\**\*.cs" />
+    <None Include="ServiceHost\**\*" />
+  </ItemGroup>
+
+  <!-- NuGet packages used by main app -->
+  <ItemGroup>
+    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="10.0.2" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
+    <PackageReference Include="System.Threading.AccessControl" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="ServiceHost\HuLoopBOT_Service.csproj">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Build the service project BEFORE main project builds/publishes -->
+  <Target Name="BuildServiceProject" BeforeTargets="BeforeBuild;BeforePublish">
+    <Message Text="========================================" Importance="high" />
+    <Message Text="Building HuLoopBOT_Service..." Importance="high" />
+    <Message Text="========================================" Importance="high" />
+    <Exec Command="dotnet build &quot;$(MSBuildProjectDirectory)\ServiceHost\HuLoopBOT_Service.csproj&quot; -c $(Configuration) --no-restore" ContinueOnError="false" />
+    <Message Text="Service project built successfully" Importance="high" />
+  </Target>
+
+  <!-- Copy service files to main output directory after build -->
+  <Target Name="CopyServiceToOutput" AfterTargets="Build;Publish" DependsOnTargets="BuildServiceProject">
+    <PropertyGroup>
+      <ServiceBinPath>$(MSBuildProjectDirectory)\ServiceHost\bin\$(Configuration)\$(TargetFramework)</ServiceBinPath>
+    </PropertyGroup>
+    
+    <Message Text="========================================" Importance="high" />
+    <Message Text="Copying service files from: $(ServiceBinPath)" Importance="high" />
+    <Message Text="To: $(OutputPath)" Importance="high" />
+    <Message Text="========================================" Importance="high" />
+    
+    <ItemGroup>
+      <ServiceFilesToCopy Include="$(ServiceBinPath)\HuLoopBOT_Service.exe" />
+      <ServiceFilesToCopy Include="$(ServiceBinPath)\HuLoopBOT_Service.dll" />
+      <ServiceFilesToCopy Include="$(ServiceBinPath)\HuLoopBOT_Service.runtimeconfig.json" />
+      <ServiceFilesToCopy Include="$(ServiceBinPath)\HuLoopBOT_Service.deps.json" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(ServiceFilesToCopy)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" />
+    
+    <Message Text="Service files copied successfully" Importance="high" />
+    
+    <!-- Verify the files were copied -->
+    <Error Condition="!Exists('$(OutputPath)HuLoopBOT_Service.exe')" Text="ERROR: HuLoopBOT_Service.exe was not copied to output directory!" />
+  </Target>
+
+  <!-- For publish: Ensure service files are included in publish output -->
+  <Target Name="IncludeServiceInPublish" AfterTargets="ComputeFilesToPublish" DependsOnTargets="CopyServiceToOutput">
+    <Message Text="========================================" Importance="high" />
+    <Message Text="Adding service files to publish manifest..." Importance="high" />
+    <Message Text="========================================" Importance="high" />
+    
+    <ItemGroup>
+      <!-- Add service files from the output directory to the publish list -->
+      <_ServicePublishFiles Include="$(OutputPath)HuLoopBOT_Service.exe" />
+      <_ServicePublishFiles Include="$(OutputPath)HuLoopBOT_Service.dll" />
+      <_ServicePublishFiles Include="$(OutputPath)HuLoopBOT_Service.runtimeconfig.json" />
+      <_ServicePublishFiles Include="$(OutputPath)HuLoopBOT_Service.deps.json" />
+  
+  <!-- Add to ResolvedFileToPublish collection -->
+      <ResolvedFileToPublish Include="@(_ServicePublishFiles)">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+   <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    
+    <Message Text="Service files added to publish manifest:" Importance="high" />
+    <Message Text="  - HuLoopBOT_Service.exe" Importance="high" />
+<Message Text="  - HuLoopBOT_Service.dll" Importance="high" />
+    <Message Text="  - HuLoopBOT_Service.runtimeconfig.json" Importance="high" />
+    <Message Text="  - HuLoopBOT_Service.deps.json" Importance="high" />
+  </Target>
+
+  <!-- Verify publish output contains service executable -->
+  <Target Name="VerifyPublishOutput" AfterTargets="Publish">
+    <Message Text="========================================" Importance="high" />
+    <Message Text="Verifying publish output..." Importance="high" />
+    <Message Text="========================================" Importance="high" />
+  
+    <PropertyGroup>
+      <PublishServiceExe>$(PublishDir)HuLoopBOT_Service.exe</PublishServiceExe>
+    </PropertyGroup>
+    
+    <Message Text="Checking for: $(PublishServiceExe)" Importance="high" />
+    
+    <Warning Condition="!Exists('$(PublishServiceExe)')" Text="WARNING: HuLoopBOT_Service.exe NOT found in publish directory: $(PublishDir)" />
+    
+    <Message Condition="Exists('$(PublishServiceExe)')" Text="SUCCESS: HuLoopBOT_Service.exe found in publish directory!" Importance="high" />
+  </Target>
+
+</Project>

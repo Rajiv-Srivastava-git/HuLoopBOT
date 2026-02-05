@@ -1,0 +1,16 @@
+﻿
+using HuLoopBOT.Models;
+using HuLoopBOT.Utilities;
+using System.Diagnostics;
+
+namespace HuLoopBOT.Services;
+
+public class SessionTransferService
+{
+    public OperationResult Transfer(int sessionId)
+    {
+        Process.Start("tscon", $"{sessionId} /dest:console");
+        Logger.Log("Session transferred");
+        return OperationResult.Ok("Session transferred");
+    }
+}

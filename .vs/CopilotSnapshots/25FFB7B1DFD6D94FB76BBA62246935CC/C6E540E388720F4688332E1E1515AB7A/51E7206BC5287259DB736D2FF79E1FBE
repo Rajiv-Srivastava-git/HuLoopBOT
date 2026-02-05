@@ -1,0 +1,56 @@
+﻿
+namespace HuLoopBOT;
+
+partial class MainForm
+{
+    private System.ComponentModel.IContainer components = null;
+    private Label lblAdminStatus;
+    private Button btnDisableSleep;
+    private Button btnDisableLock;
+    private Button btnPreventRdpTimeout;
+    private Button btnTransferSession;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && (components != null))
+            components.Dispose();
+        base.Dispose(disposing);
+    }
+
+    private void InitializeComponent()
+    {
+        lblAdminStatus = new Label();
+        btnDisableSleep = new Button();
+        btnDisableLock = new Button();
+        btnPreventRdpTimeout = new Button();
+        btnTransferSession = new Button();
+
+        lblAdminStatus.Location = new Point(20, 20);
+        lblAdminStatus.Size = new Size(250, 30);
+
+        btnDisableSleep.Text = "Disable Sleep";
+        btnDisableSleep.Location = new Point(20, 70);
+        btnDisableSleep.Click += btnDisableSleep_Click;
+
+        btnDisableLock.Text = "Disable Lock Screen";
+        btnDisableLock.Location = new Point(20, 110);
+        btnDisableLock.Click += btnDisableLock_Click;
+
+        btnPreventRdpTimeout.Text = "Prevent RDP Timeout";
+        btnPreventRdpTimeout.Location = new Point(20, 150);
+        btnPreventRdpTimeout.Click += btnPreventRdpTimeout_Click;
+
+        btnTransferSession.Text = "Transfer Session";
+        btnTransferSession.Location = new Point(20, 190);
+        btnTransferSession.Click += btnTransferSession_Click;
+
+        Controls.Add(lblAdminStatus);
+        Controls.Add(btnDisableSleep);
+        Controls.Add(btnDisableLock);
+        Controls.Add(btnPreventRdpTimeout);
+        Controls.Add(btnTransferSession);
+
+        Text = "HuLoop BOT";
+        ClientSize = new Size(400, 260);
+    }
+}

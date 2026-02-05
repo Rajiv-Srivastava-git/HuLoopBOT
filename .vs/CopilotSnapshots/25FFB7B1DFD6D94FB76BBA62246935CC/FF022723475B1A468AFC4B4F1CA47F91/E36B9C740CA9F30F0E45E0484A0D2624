@@ -1,0 +1,323 @@
+﻿using HuLoopBOT.Services;
+using HuLoopBOT.Utilities;
+using System.Diagnostics;
+
+namespace HuLoopBOT;
+
+public partial class MainForm : Form
+{
+    private readonly bool _isAdmin;
+    private RdpSessionMonitor? _rdpMonitor;
+
+    public MainForm()
+ {
+  InitializeComponent();
+   
+        _isAdmin = AdminService.IsAdmin();
+        
+        UpdateAdminStatus();
+        ConfigureButtonsForPrivilegeLevel();
+   ConfigureRestartButton();
+        
+        // Initialize RDP session monitor if admin
+     if (_isAdmin)
+        {
+            InitializeRdpMonitor();
+        }
+    }
+
+    private void InitializeRdpMonitor()
+    {
+        try
+        {
+            Logger.LogVerbose("Initializing RDP session monitor");
+      
+      _rdpMonitor = new RdpSessionMonitor();
+   _rdpMonitor.AutoTransferOnDisconnect = true;
+            
+    // Start monitoring after form handle is created
+  if (Handle != IntPtr.Zero)
+{
+            bool started = _rdpMonitor.StartMonitoring(Handle);
+    if (started)
+                {
+             Logger.LogInformation("RDP session auto-transfer monitoring is active");
+      }
+      }
+   }
+        catch (Exception ex)
+        {
+            Logger.LogError("Failed to initialize RDP session monitor", ex);
+        }
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+   
+        // Start RDP monitoring when handle is available
+        if (_isAdmin && _rdpMonitor != null && !_rdpMonitor.IsMonitoring)
+        {
+            _rdpMonitor.StartMonitoring(Handle);
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+      const int WM_WTSSESSION_CHANGE = 0x02B1;
+    
+// Process session change messages
+        if (m.Msg == WM_WTSSESSION_CHANGE && _rdpMonitor != null)
+    {
+     int eventType = m.WParam.ToInt32();
+      int sessionId = m.LParam.ToInt32();
+            
+   _rdpMonitor.ProcessSessionChange(eventType, sessionId);
+    }
+        
+        base.WndProc(ref m);
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        // Stop RDP monitoring when form is closing
+if (_rdpMonitor != null && _rdpMonitor.IsMonitoring)
+        {
+            _rdpMonitor.StopMonitoring(Handle);
+        _rdpMonitor.Dispose();
+   }
+        
+  base.OnFormClosing(e);
+    }
+
+    private void UpdateAdminStatus()
+    {
+        if (_isAdmin)
+        {
+            lblAdminStatus.Text = "\u2713 Running as Administrator"; // ✓
+     lblAdminStatus.ForeColor = Color.Green;
+    lblInfo.Text = "All operations are available. RDP auto-transfer is active.";
+       lblInfo.ForeColor = Color.Green;
+   }
+        else
+        {
+            lblAdminStatus.Text = "\u26A0 Not Administrator - Limited Features"; // ⚠
+            lblAdminStatus.ForeColor = Color.Orange;
+   lblInfo.Text = "Administrator privileges are required to modify system settings.";
+    lblInfo.ForeColor = Color.Gray;
+  }
+        
+  // Ensure proper font for Unicode characters
+        lblAdminStatus.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+    }
+
+    private void ConfigureRestartButton()
+    {
+        // Only show restart button for non-admin users
+  btnRestartAsAdmin.Visible = !_isAdmin;
+  
+        if (_isAdmin)
+        {
+// Adjust layout when restart button is hidden
+     btnDisableSleep.Location = new Point(20, 105);
+         btnDisableLock.Location = new Point(20, 150);
+            btnPreventRdpTimeout.Location = new Point(20, 195);
+     btnTransferSession.Location = new Point(20, 240);
+            ClientSize = new Size(400, 295);
+        }
+    }
+
+  private void ConfigureButtonsForPrivilegeLevel()
+    {
+        if (!_isAdmin)
+        {
+   // Disable operation buttons for non-admin users
+ btnDisableSleep.Enabled = false;
+            btnDisableLock.Enabled = false;
+            btnPreventRdpTimeout.Enabled = false;
+            btnTransferSession.Enabled = false;
+
+     // Update button text to show admin required
+            btnDisableSleep.Text = "Disable Sleep (Admin Required)";
+       btnDisableLock.Text = "Disable Lock Screen (Admin Required)";
+            btnPreventRdpTimeout.Text = "Prevent RDP Timeout (Admin Required)";
+      btnTransferSession.Text = "Transfer Session (Admin Required)";
+    
+            Logger.LogInformation("UI loaded in non-admin mode - operations disabled");
+        }
+   else
+        {
+      // Update Transfer Session button text to indicate auto mode
+            btnTransferSession.Text = "Transfer Session (Manual)";
+            
+       Logger.LogInformation("UI loaded in admin mode - all operations enabled");
+        }
+    }
+
+    private void btnDisableSleep_Click(object sender, EventArgs e)
+    {
+ if (!_isAdmin)
+        {
+            ShowAdminRequiredMessage();
+            return;
+      }
+
+   try
+        {
+    var result = new PowerService().DisableSleep();
+        ShowResult(result.Success, result.Message);
+        }
+catch (Exception ex)
+  {
+            Logger.LogError("Error in btnDisableSleep_Click", ex);
+   ShowResult(false, $"Error: {ex.Message}");
+        }
+    }
+
+private void btnDisableLock_Click(object sender, EventArgs e)
+    {
+ if (!_isAdmin)
+        {
+            ShowAdminRequiredMessage();
+            return;
+        }
+
+        try
+        {
+            var result = new LockService().DisableLockScreen();
+      ShowResult(result.Success, result.Message);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error in btnDisableLock_Click", ex);
+       ShowResult(false, $"Error: {ex.Message}");
+  }
+    }
+
+    private void btnPreventRdpTimeout_Click(object sender, EventArgs e)
+    {
+        if (!_isAdmin)
+        {
+     ShowAdminRequiredMessage();
+          return;
+ }
+
+        try
+        {
+            var result = new RdpService().PreventTimeout();
+      ShowResult(result.Success, result.Message);
+  }
+        catch (Exception ex)
+        {
+         Logger.LogError("Error in btnPreventRdpTimeout_Click", ex);
+  ShowResult(false, $"Error: {ex.Message}");
+        }
+    }
+
+    private void btnTransferSession_Click(object sender, EventArgs e)
+    {
+  if (!_isAdmin)
+      {
+         ShowAdminRequiredMessage();
+        return;
+}
+
+   // Manual transfer - user can still trigger it manually if needed
+        var result = MessageBox.Show(
+    "RDP session transfer is automatically triggered on disconnect.\n\n" +
+  "Do you want to manually transfer the current session to console now?",
+    "Manual Session Transfer",
+ MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+
+        if (result == DialogResult.Yes)
+     {
+          try
+       {
+       var transferResult = new SessionTransferService().Transfer(1);
+       ShowResult(transferResult.Success, transferResult.Message);
+      }
+            catch (Exception ex)
+          {
+                Logger.LogError("Error in btnTransferSession_Click", ex);
+       ShowResult(false, $"Error: {ex.Message}");
+            }
+        }
+    }
+
+    private void ShowResult(bool success, string message)
+    {
+        var icon = success ? MessageBoxIcon.Information : MessageBoxIcon.Error;
+        var title = success ? "Success" : "Error";
+        
+        Logger.Log(message);
+ MessageBox.Show(message, title, MessageBoxButtons.OK, icon);
+    }
+
+    private void ShowAdminRequiredMessage()
+    {
+      var result = MessageBox.Show(
+            "Administrator privileges are required for this operation.\n\n" +
+            "Would you like to restart the application as Administrator?",
+          "Administrator Required",
+MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (result == DialogResult.Yes)
+        {
+  RestartAsAdmin();
+      }
+    }
+
+    private void RestartAsAdmin()
+    {
+        try
+        {
+ Logger.LogInformation("User requested to restart application with elevated privileges");
+            
+var psi = new ProcessStartInfo
+     {
+         FileName = Application.ExecutablePath,
+       UseShellExecute = true,
+        Verb = "runas"
+   };
+
+            Logger.LogVerbose($"Starting elevated process: {psi.FileName}");
+   
+        Process.Start(psi);
+        
+            Logger.LogInformation("Elevated process started, closing current instance");
+            Application.Exit();
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+       if (ex.NativeErrorCode == 1223) // User cancelled UAC
+            {
+Logger.LogWarning("User cancelled UAC elevation prompt");
+          MessageBox.Show(
+  "Elevation cancelled. The application will continue in limited mode.",
+      "Cancelled",
+                    MessageBoxButtons.OK,
+     MessageBoxIcon.Information);
+            }
+       else
+ {
+            Logger.LogError($"Failed to restart as admin. Error Code: {ex.NativeErrorCode}", ex);
+       MessageBox.Show(
+         $"Failed to restart with elevated privileges.\n\nError: {ex.Message}",
+      "Error",
+    MessageBoxButtons.OK,
+     MessageBoxIcon.Error);
+     }
+        }
+        catch (Exception ex)
+    {
+          Logger.LogError("Unexpected error during restart as admin", ex);
+        MessageBox.Show(
+            $"An unexpected error occurred:\n\n{ex.Message}",
+"Error",
+      MessageBoxButtons.OK,
+     MessageBoxIcon.Error);
+      }
+    }
+}

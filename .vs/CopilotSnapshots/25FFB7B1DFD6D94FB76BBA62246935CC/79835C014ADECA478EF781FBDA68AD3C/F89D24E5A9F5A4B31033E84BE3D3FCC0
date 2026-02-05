@@ -1,0 +1,29 @@
+﻿using HuLoopBOT.Models;
+using HuLoopBOT.Utilities;
+using System.Diagnostics;
+
+namespace HuLoopBOT.Services;
+
+public class SessionTransferService
+{
+    public OperationResult Transfer(int sessionId)
+    {
+        try
+        {
+            Logger.LogVerbose($"Starting session transfer to session ID: {sessionId}");
+            Logger.LogVerbose($"Executing: tscon {sessionId} /dest:console");
+
+            Process.Start("tscon", $"{sessionId} /dest:console");
+
+            Logger.LogInformation($"Session transferred to console (Session ID: {sessionId})");
+            Logger.LogVerbose("Session transfer operation completed");
+
+            return OperationResult.Ok($"Session transferred to session {sessionId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Failed to transfer session {sessionId}", ex);
+            return OperationResult.Fail($"Failed to transfer session: {ex.Message}");
+        }
+    }
+}

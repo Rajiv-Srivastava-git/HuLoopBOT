@@ -1,0 +1,33 @@
+﻿using HuLoopBOT.Models;
+using Microsoft.Win32;
+using HuLoopBOT.Utilities;
+
+namespace HuLoopBOT.Services;
+
+public class RdpService
+{
+    public OperationResult PreventTimeout()
+    {
+        try
+        {
+            var registryPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services";
+            var valueName = "MaxIdleTime";
+
+            Logger.LogVerbose($"Starting PreventTimeout operation");
+            Logger.LogVerbose($"Registry path: {registryPath}");
+            Logger.LogVerbose($"Setting {valueName} = 0");
+
+            Registry.SetValue(registryPath, valueName, 0);
+
+            Logger.LogInformation("RDP timeout disabled successfully");
+            Logger.LogVerbose("PreventTimeout operation completed");
+
+            return OperationResult.Ok("RDP timeout disabled");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Failed to disable RDP timeout", ex);
+            return OperationResult.Fail($"Failed to disable RDP timeout: {ex.Message}");
+        }
+    }
+}

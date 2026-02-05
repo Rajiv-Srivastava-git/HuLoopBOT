@@ -1,0 +1,158 @@
+﻿namespace HuLoopBOT;
+
+partial class MainForm
+{
+    private System.ComponentModel.IContainer components = null;
+    private Label lblAdminStatus;
+    private Label lblInfo;
+    private Label lblSelectUser;
+    private ComboBox cmbUsers;
+    private Button btnRefreshUsers;
+    private Button btnRestartAsAdmin;
+    private Button btnConfigureAll;
+    private Button btnTransferSession;
+    private Label lblTransferStatus;
+    private Button btnVerifySettings;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && (components != null))
+            components.Dispose();
+        base.Dispose(disposing);
+    }
+
+    private void InitializeComponent()
+    {
+        lblAdminStatus = new Label();
+        lblInfo = new Label();
+        lblSelectUser = new Label();
+        cmbUsers = new ComboBox();
+        btnRefreshUsers = new Button();
+        btnRestartAsAdmin = new Button();
+        btnConfigureAll = new Button();
+        btnTransferSession = new Button();
+        lblTransferStatus = new Label();
+        btnVerifySettings = new Button();
+
+        SuspendLayout();
+
+        // lblAdminStatus
+        lblAdminStatus.Location = new Point(20, 20);
+        lblAdminStatus.Size = new Size(460, 35);
+        lblAdminStatus.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+        lblAdminStatus.AutoSize = false;
+        lblAdminStatus.TextAlign = ContentAlignment.MiddleLeft;
+
+        // lblInfo
+        lblInfo.Location = new Point(20, 60);
+        lblInfo.Size = new Size(460, 50);
+        lblInfo.Font = new Font("Segoe UI", 9F);
+        lblInfo.ForeColor = Color.Gray;
+        lblInfo.Text = "Administrator privileges are required to modify system settings.";
+        lblInfo.AutoSize = false;
+
+        // lblSelectUser
+        lblSelectUser.Text = "Select User:";
+        lblSelectUser.Location = new Point(20, 120);
+        lblSelectUser.Size = new Size(85, 30);
+        lblSelectUser.Font = new Font("Segoe UI", 10F);
+        lblSelectUser.TextAlign = ContentAlignment.MiddleLeft;
+
+        // cmbUsers
+        cmbUsers.DropDownStyle = ComboBoxStyle.DropDownList;
+        cmbUsers.Location = new Point(110, 120);
+        cmbUsers.Size = new Size(310, 30);
+        cmbUsers.Font = new Font("Segoe UI", 10F);
+        cmbUsers.SelectedIndexChanged += cmbUsers_SelectedIndexChanged;
+
+        // btnRefreshUsers
+        btnRefreshUsers.Text = "\u27F3"; // Refresh symbol
+        btnRefreshUsers.Location = new Point(430, 120);
+        btnRefreshUsers.Size = new Size(50, 30);
+        btnRefreshUsers.Font = new Font("Segoe UI", 14F);
+        btnRefreshUsers.Cursor = Cursors.Hand;
+        btnRefreshUsers.FlatStyle = FlatStyle.Flat;
+        btnRefreshUsers.FlatAppearance.BorderSize = 1;
+        btnRefreshUsers.FlatAppearance.BorderColor = Color.FromArgb(189, 195, 199);
+        btnRefreshUsers.Click += btnRefreshUsers_Click;
+
+        // btnRestartAsAdmin
+        btnRestartAsAdmin.Text = "\uD83D\uDD12 Restart as Administrator"; // 🔒
+        btnRestartAsAdmin.Location = new Point(20, 165);
+        btnRestartAsAdmin.Size = new Size(460, 45);
+        btnRestartAsAdmin.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnRestartAsAdmin.BackColor = Color.FromArgb(0, 120, 215);
+        btnRestartAsAdmin.ForeColor = Color.White;
+        btnRestartAsAdmin.FlatStyle = FlatStyle.Flat;
+        btnRestartAsAdmin.FlatAppearance.BorderSize = 0;
+        btnRestartAsAdmin.Cursor = Cursors.Hand;
+        btnRestartAsAdmin.Click += (s, e) => RestartAsAdmin();
+
+        // btnConfigureAll
+        btnConfigureAll.Text = "Configure All Settings";
+        btnConfigureAll.Location = new Point(20, 225);
+        btnConfigureAll.Size = new Size(460, 50);
+        btnConfigureAll.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+        btnConfigureAll.BackColor = Color.FromArgb(46, 204, 113);
+        btnConfigureAll.ForeColor = Color.White;
+        btnConfigureAll.FlatStyle = FlatStyle.Flat;
+        btnConfigureAll.FlatAppearance.BorderSize = 0;
+        btnConfigureAll.Cursor = Cursors.Hand;
+        btnConfigureAll.Click += btnConfigureAll_Click;
+
+        // lblTransferStatus
+        lblTransferStatus.Text = "Status: Inactive";
+        lblTransferStatus.Location = new Point(20, 290);
+        lblTransferStatus.Size = new Size(460, 25);
+        lblTransferStatus.Font = new Font("Segoe UI", 9F, FontStyle.Italic);
+        lblTransferStatus.ForeColor = Color.Gray;
+        lblTransferStatus.TextAlign = ContentAlignment.MiddleLeft;
+
+        // btnTransferSession
+        btnTransferSession.Text = "Enable Transfer Session";
+        btnTransferSession.Location = new Point(20, 320);
+        btnTransferSession.Size = new Size(222, 45);
+        btnTransferSession.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnTransferSession.BackColor = Color.FromArgb(52, 152, 219);
+        btnTransferSession.ForeColor = Color.White;
+        btnTransferSession.FlatStyle = FlatStyle.Flat;
+        btnTransferSession.FlatAppearance.BorderSize = 0;
+        btnTransferSession.Cursor = Cursors.Hand;
+        btnTransferSession.Click += btnTransferSession_Click;
+
+        // btnVerifySettings
+        btnVerifySettings.Text = "Verify System Settings";
+        btnVerifySettings.Location = new Point(258, 320);
+        btnVerifySettings.Size = new Size(222, 45);
+        btnVerifySettings.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        btnVerifySettings.BackColor = Color.FromArgb(142, 68, 173);
+        btnVerifySettings.ForeColor = Color.White;
+        btnVerifySettings.FlatStyle = FlatStyle.Flat;
+        btnVerifySettings.FlatAppearance.BorderSize = 0;
+        btnVerifySettings.Cursor = Cursors.Hand;
+        btnVerifySettings.Click += btnVerifySettings_Click;
+
+        // MainForm
+        Controls.Add(lblAdminStatus);
+        Controls.Add(lblInfo);
+        Controls.Add(lblSelectUser);
+        Controls.Add(cmbUsers);
+        Controls.Add(btnRefreshUsers);
+        Controls.Add(btnRestartAsAdmin);
+        Controls.Add(btnConfigureAll);
+        Controls.Add(lblTransferStatus);
+        Controls.Add(btnTransferSession);
+        Controls.Add(btnVerifySettings);
+
+        Text = "HuLoop BOT - Machine Readiness";
+        ClientSize = new Size(500, 385);
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        MaximizeBox = false;
+        StartPosition = FormStartPosition.CenterScreen;
+        Font = new Font("Segoe UI", 9F);
+        BackColor = Color.White;
+        Padding = new Padding(0);
+
+        ResumeLayout(false);
+    }
+}

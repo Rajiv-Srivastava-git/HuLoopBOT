@@ -1,0 +1,49 @@
+# Recommended .gitignore entries for HuLoopBOT
+
+# Build outputs
+bin/
+obj/
+publish/
+publish-standalone/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+
+# Old batch files (if you moved them to backup)
+old-scripts-backup/
+
+# Logs (if testing locally)
+*.log
+
+# Windows Service executable (generated during build)
+HuLoopBOT_Service.exe
+HuLoopBOT_Service.dll
+HuLoopBOT_Service.runtimeconfig.json
+HuLoopBOT_Service.deps.json
+
+# ServiceHost build output (gets copied to main output)
+ServiceHost/bin/
+ServiceHost/obj/
+
+# Testing and temporary files
+TestResults/
+*.tmp
+*.temp
+
+# User-specific files
+.vscode/
+*.code-workspace
+
+# NuGet
+packages/
+*.nupkg
+
+# Note: Keep these files IN source control:
+# - Scripts/*.bat (all batch files)
+# - Scripts/README.md
+# - *.md files (documentation)
+# - *.csproj files
+# - *.cs files (source code)

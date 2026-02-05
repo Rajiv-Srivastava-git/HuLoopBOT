@@ -1,0 +1,221 @@
+﻿using HuLoopBOT.Utilities;
+using System.DirectoryServices;
+using System.Security.Principal;
+
+namespace HuLoopBOT.Services;
+
+/// <summary>
+/// Service for managing and retrieving local Windows user accounts
+/// </summary>
+public class UserManagementService
+{
+    /// <summary>
+    /// Gets all local user accounts on the system
+    /// </summary>
+    public List<LocalUser> GetLocalUsers()
+ {
+        var users = new List<LocalUser>();
+
+        try
+        {
+  Logger.LogVerbose("Retrieving local user accounts");
+
+       // Get local machine
+            using var machine = new DirectoryEntry("WinNT://" + Environment.MachineName);
+            
+            // Enumerate users
+            foreach (DirectoryEntry child in machine.Children)
+  {
+          if (child.SchemaClassName == "User")
+        {
+               try
+             {
+             string username = child.Name;
+            string fullName = child.Properties["FullName"].Value?.ToString() ?? "";
+     bool isEnabled = true;
+
+        // Try to get account flags
+       if (child.Properties.Contains("UserFlags"))
+     {
+     int flags = (int)child.Properties["UserFlags"].Value;
+    // Check if account is disabled (ADS_UF_ACCOUNTDISABLE = 0x0002)
+  isEnabled = (flags & 0x0002) == 0;
+            }
+
+var user = new LocalUser
+        {
+      Username = username,
+  FullName = fullName,
+     IsEnabled = isEnabled,
+   MachineName = Environment.MachineName
+      };
+
+      users.Add(user);
+   Logger.LogVerbose($"Found user: {username} ({fullName}) - Enabled: {isEnabled}");
+    }
+          catch (Exception ex)
+        {
+      Logger.LogVerbose($"Could not read user details for {child.Name}: {ex.Message}");
+      }
+   }
+      }
+
+    Logger.LogInformation($"Retrieved {users.Count} local user accounts");
+        }
+        catch (Exception ex)
+        {
+   Logger.LogError("Failed to retrieve local user accounts", ex);
+        }
+
+        // Sort by username
+        return users.OrderBy(u => u.Username).ToList();
+    }
+
+    /// <summary>
+    /// Gets the currently logged-in user
+    /// </summary>
+    public LocalUser? GetCurrentUser()
+    {
+    try
+ {
+            string currentUsername = Environment.UserName;
+      Logger.LogVerbose($"Current user: {currentUsername}");
+
+   var allUsers = GetLocalUsers();
+   return allUsers.FirstOrDefault(u => 
+  u.Username.Equals(currentUsername, StringComparison.OrdinalIgnoreCase));
+   }
+    catch (Exception ex)
+        {
+    Logger.LogError("Failed to get current user", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+ /// Gets active session users (users currently logged in)
+    /// </summary>
+  public List<SessionUser> GetActiveSessionUsers()
+    {
+        var sessionUsers = new List<SessionUser>();
+
+        try
+     {
+      Logger.LogVerbose("Retrieving active session users");
+
+            // Use query user command to get session information
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+   {
+     FileName = "query",
+           Arguments = "user",
+ RedirectStandardOutput = true,
+       RedirectStandardError = true,
+       UseShellExecute = false,
+            CreateNoWindow = true
+     };
+
+          using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process != null)
+            {
+         string output = process.StandardOutput.ReadToEnd();
+         process.WaitForExit();
+
+                // Parse output (skip header line)
+             var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+    for (int i = 1; i < lines.Length; i++)
+              {
+   try
+         {
+   var line = lines[i];
+             // Parse: USERNAME SESSIONNAME ID STATE IDLE TIME LOGON TIME
+ var parts = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        
+      if (parts.Length >= 3)
+          {
+             string username = parts[0].TrimStart('>').Trim();
+ string sessionName = parts[1];
+         int sessionId = int.Parse(parts[2]);
+       string state = parts.Length > 3 ? parts[3] : "Unknown";
+
+         var sessionUser = new SessionUser
+             {
+           Username = username,
+         SessionName = sessionName,
+          SessionId = sessionId,
+      State = state,
+            IsCurrentSession = line.StartsWith(">")
+ };
+
+         sessionUsers.Add(sessionUser);
+  Logger.LogVerbose($"Active session: {username} (ID: {sessionId}, State: {state})");
+       }
+           }
+        catch (Exception ex)
+                 {
+            Logger.LogVerbose($"Could not parse session line: {ex.Message}");
+       }
+        }
+   }
+
+          Logger.LogInformation($"Retrieved {sessionUsers.Count} active session users");
+        }
+  catch (Exception ex)
+        {
+    Logger.LogError("Failed to retrieve active session users", ex);
+        }
+
+        return sessionUsers;
+    }
+
+    /// <summary>
+    /// Checks if a user exists on the local system
+    /// </summary>
+    public bool UserExists(string username)
+    {
+        try
+        {
+            var users = GetLocalUsers();
+            return users.Any(u => u.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+    }
+        catch (Exception ex)
+        {
+     Logger.LogError($"Failed to check if user exists: {username}", ex);
+            return false;
+        }
+ }
+}
+
+/// <summary>
+/// Represents a local Windows user account
+/// </summary>
+public class LocalUser
+{
+    public string Username { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public bool IsEnabled { get; set; }
+    public string MachineName { get; set; } = "";
+
+    public string DisplayName => string.IsNullOrWhiteSpace(FullName) 
+      ? Username 
+   : $"{Username} ({FullName})";
+
+    public override string ToString() => DisplayName;
+}
+
+/// <summary>
+/// Represents a user with an active Windows session
+/// </summary>
+public class SessionUser
+{
+    public string Username { get; set; } = "";
+    public string SessionName { get; set; } = "";
+    public int SessionId { get; set; }
+    public string State { get; set; } = "";
+    public bool IsCurrentSession { get; set; }
+
+    public string DisplayName => IsCurrentSession 
+        ? $"{Username} (Session {SessionId}) - Current" 
+    : $"{Username} (Session {SessionId})";
+
+    public override string ToString() => DisplayName;
+}

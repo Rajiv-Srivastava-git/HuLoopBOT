@@ -1,0 +1,192 @@
+﻿using System.Diagnostics;
+using System.Security.Principal;
+using HuLoopBOT.Utilities;
+
+namespace HuLoopBOT;
+
+internal static class Program
+{
+    [STAThread]
+    static void Main()
+    {
+        try
+        {
+            Logger.LogVerbose("Application starting");
+            Logger.LogVerbose($"Process ID: {Environment.ProcessId}");
+            Logger.LogVerbose($"OS Version: {Environment.OSVersion}");
+            Logger.LogVerbose($".NET Version: {Environment.Version}");
+            
+            if (!IsAdmin())
+            {
+                Logger.LogWarning("Application not running as administrator. Attempting to restart with elevated privileges.");
+                
+                try
+                {
+                    var executablePath = Application.ExecutablePath;
+                    Logger.LogVerbose($"Current executable path: {executablePath}");
+                
+                    if (string.IsNullOrEmpty(executablePath))
+                    {
+                        Logger.LogError("Failed to get executable path - path is null or empty", null);
+                        MessageBox.Show("Unable to determine application path. Cannot restart with elevated privileges.", 
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = executablePath,
+                        UseShellExecute = true,
+                        Verb = "runas"
+                    };
+                
+                    Logger.LogVerbose($"Starting elevated process with UseShellExecute={psi.UseShellExecute}, Verb={psi.Verb}");
+
+                    var process = Process.Start(psi);
+                
+                    if (process != null)
+                    {
+                        Logger.LogVerbose($"Elevated process started successfully with PID: {process.Id}");
+                        Logger.LogInformation("Application restarted with administrator privileges");
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Process.Start returned null - user may have cancelled UAC prompt");
+                    }
+                }
+                catch (System.ComponentModel.Win32Exception win32Ex)
+                {
+                    Logger.LogError($"Win32 error during elevation attempt. Error Code: {win32Ex.NativeErrorCode}, HRESULT: 0x{win32Ex.HResult:X8}", win32Ex);
+                
+                    if (win32Ex.NativeErrorCode == 1223) // ERROR_CANCELLED
+                    {
+                        Logger.LogWarning("User cancelled the UAC elevation prompt");
+                        MessageBox.Show("Administrator privileges are required to run this application.", 
+                        "Elevation Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to restart with elevated privileges.\n\nError Code: {win32Ex.NativeErrorCode}\nError: {win32Ex.Message}", 
+                        "Elevation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"Unexpected error during elevation attempt. Exception Type: {ex.GetType().Name}", ex);
+                    MessageBox.Show($"An unexpected error occurred while attempting to elevate privileges:\n\n{ex.Message}", 
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                
+                return;
+            }
+
+            Logger.LogInformation("HuLoopBOT application started with administrator privileges");
+            Logger.LogVerbose($"Executable path: {Application.ExecutablePath}");
+            Logger.LogVerbose($"Working directory: {Environment.CurrentDirectory}");
+            Logger.LogVerbose($"User: {Environment.UserName}");
+            Logger.LogVerbose($"Machine: {Environment.MachineName}");
+            
+            try
+            {
+                Logger.LogVerbose("Initializing application configuration");
+                ApplicationConfiguration.Initialize();
+                Logger.LogVerbose("Application configuration initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Failed to initialize application configuration. Exception Type: {ex.GetType().Name}", ex);
+                MessageBox.Show($"Failed to initialize application:\n\n{ex.Message}", 
+                "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+        
+            try
+            {
+                Logger.LogVerbose("Creating and running MainForm");
+                Application.Run(new MainForm());
+                Logger.LogVerbose("MainForm closed normally");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Unhandled exception in MainForm. Exception Type: {ex.GetType().Name}", ex);
+                MessageBox.Show($"An error occurred while running the application:\n\n{ex.Message}\n\nSee event log for details.", 
+                            "Application Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+                
+            Logger.LogVerbose("Application shutting down");
+            Logger.LogInformation("HuLoopBOT application terminated normally");
+        }
+        catch (Exception ex)
+        {
+            // Catch-all for any unexpected errors in Main
+            try
+            {
+                Logger.LogError($"Critical unhandled exception in Main method. Exception Type: {ex.GetType().Name}", ex);
+            }
+            catch
+            {
+                // If logging fails, try to at least show a message box
+                MessageBox.Show($"Critical error:\n\n{ex.GetType().Name}: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", 
+                "Critical Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+
+    static bool IsAdmin()
+    {
+        try
+        {
+            Logger.LogVerbose("Performing administrator privilege check");
+            
+            using var id = WindowsIdentity.GetCurrent();
+            Logger.LogVerbose($"Current Windows Identity: {id.Name}, Authentication Type: {id.AuthenticationType}");
+        
+            var p = new WindowsPrincipal(id);
+            var isAdmin = p.IsInRole(WindowsBuiltInRole.Administrator);
+            
+            Logger.LogVerbose($"Administrator check result: {isAdmin}");
+
+            if (!isAdmin)
+            {
+                Logger.LogVerbose($"User is in roles: {string.Join(", ", GetUserRoles(p))}");
+            }
+                
+            return isAdmin;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Failed to check administrator privileges. Exception Type: {ex.GetType().Name}", ex);
+            // Default to false if we can't determine admin status
+            return false;
+        }
+    }
+    
+    static List<string> GetUserRoles(WindowsPrincipal principal)
+    {
+        var roles = new List<string>();
+        
+        try
+        {
+            foreach (WindowsBuiltInRole role in Enum.GetValues(typeof(WindowsBuiltInRole)))
+            {
+                try
+                {
+                    if (principal.IsInRole(role))
+                    {
+                        roles.Add(role.ToString());
+                    }
+                }
+                catch
+                {
+                    // Skip roles we can't check
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogVerbose($"Error enumerating user roles: {ex.Message}");
+        }
+      
+        return roles;
+    }
+}

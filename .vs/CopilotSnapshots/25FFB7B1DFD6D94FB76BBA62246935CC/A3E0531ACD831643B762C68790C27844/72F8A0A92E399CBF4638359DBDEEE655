@@ -1,0 +1,253 @@
+﻿using System.Diagnostics;
+using System.Security.Principal;
+using System.Runtime.InteropServices;
+using HuLoopBOT.Utilities;
+
+namespace HuLoopBOT;
+
+internal static class Program
+{
+    [DllImport("kernel32.dll")]
+    static extern bool AttachConsole(int dwProcessId);
+    
+    [DllImport("kernel32.dll")]
+    static extern bool AllocConsole();
+    
+    [DllImport("kernel32.dll")]
+    static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int ATTACH_PARENT_PROCESS = -1;
+    private const int SW_HIDE = 0;
+    private const int SW_SHOW = 5;
+
+    [STAThread]
+    static int Main(string[] args)
+{
+        // Determine if we're running in console mode (with arguments) or GUI mode
+        var isConsoleMode = args.Length > 0;
+
+      if (isConsoleMode)
+        {
+      return RunConsoleMode(args);
+   }
+        else
+        {
+      return RunGuiMode();
+        }
+    }
+
+    static int RunConsoleMode(string[] args)
+    {
+      // Try to attach to parent console (for command prompt/PowerShell)
+        var hasConsole = AttachConsole(ATTACH_PARENT_PROCESS);
+        
+        if (!hasConsole)
+  {
+ // If no parent console, allocate a new one (for double-click execution with args)
+    AllocConsole();
+        }
+
+        try
+        {
+            Logger.LogVerbose("Application starting in console mode");
+            Logger.LogVerbose($"Process ID: {Environment.ProcessId}");
+         Logger.LogVerbose($"OS Version: {Environment.OSVersion}");
+  Logger.LogVerbose($".NET Version: {Environment.Version}");
+    Logger.LogVerbose($"Arguments: {string.Join(" ", args)}");
+
+     if (!IsAdmin())
+   {
+     var errorMsg = "ERROR: Administrator privileges are required to run this application in console mode.";
+         Console.WriteLine(errorMsg);
+           Console.WriteLine("Please run this application as Administrator.");
+           Logger.LogError("Console mode attempted without administrator privileges", null);
+     return 2; // Exit code 2 for permission denied
+ }
+
+Logger.LogInformation("Console mode running with administrator privileges");
+       
+ var exitCode = CommandLineHandler.Execute(args);
+            
+     Logger.LogInformation($"Console mode exiting with code: {exitCode}");
+            
+        return exitCode;
+        }
+        catch (Exception ex)
+        {
+        Logger.LogError($"Critical error in console mode. Exception Type: {ex.GetType().Name}", ex);
+Console.WriteLine($"CRITICAL ERROR: {ex.Message}");
+            return -1;
+        }
+    finally
+        {
+            // Small delay to ensure output is visible if launched from explorer
+    if (hasConsole)
+            {
+              Thread.Sleep(100);
+       }
+  }
+    }
+
+    static int RunGuiMode()
+  {
+        // Hide console window in GUI mode
+        HideConsoleWindow();
+
+        try
+        {
+            Logger.LogVerbose("Application starting in GUI mode");
+            Logger.LogVerbose($"Process ID: {Environment.ProcessId}");
+ Logger.LogVerbose($"OS Version: {Environment.OSVersion}");
+    Logger.LogVerbose($".NET Version: {Environment.Version}");
+   
+            var isAdmin = IsAdmin();
+  
+ if (!isAdmin)
+            {
+    Logger.LogInformation("Application starting in GUI mode without administrator privileges");
+        Logger.LogWarning("Some features will be disabled until elevated");
+        }
+    else
+            {
+      Logger.LogInformation("HuLoopBOT application started with administrator privileges");
+        }
+     
+         Logger.LogVerbose($"Executable path: {Application.ExecutablePath}");
+            Logger.LogVerbose($"Working directory: {Environment.CurrentDirectory}");
+            Logger.LogVerbose($"User: {Environment.UserName}");
+  Logger.LogVerbose($"Machine: {Environment.MachineName}");
+    
+            try
+            {
+     Logger.LogVerbose("Initializing application configuration");
+          ApplicationConfiguration.Initialize();
+       Logger.LogVerbose("Application configuration initialized successfully");
+  }
+            catch (Exception ex)
+    {
+                Logger.LogError($"Failed to initialize application configuration. Exception Type: {ex.GetType().Name}", ex);
+ MessageBox.Show($"Failed to initialize application:\n\n{ex.Message}", 
+         "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+     return 1;
+  }
+      
+         try
+            {
+       Logger.LogVerbose("Creating and running MainForm");
+        Application.Run(new MainForm());
+    Logger.LogVerbose("MainForm closed normally");
+      }
+   catch (Exception ex)
+          {
+ Logger.LogError($"Unhandled exception in MainForm. Exception Type: {ex.GetType().Name}", ex);
+     MessageBox.Show($"An error occurred while running the application:\n\n{ex.Message}\n\nSee event log for details.", 
+  "Application Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+    
+      Logger.LogVerbose("Application shutting down");
+    Logger.LogInformation("HuLoopBOT application terminated normally");
+       return 0;
+        }
+        catch (Exception ex)
+        {
+            // Catch-all for any unexpected errors in Main
+            try
+     {
+     Logger.LogError($"Critical unhandled exception in Main method. Exception Type: {ex.GetType().Name}", ex);
+            }
+         catch
+       {
+// If logging fails, try to at least show a message box
+                MessageBox.Show($"Critical error:\n\n{ex.GetType().Name}: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", 
+  "Critical Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+ }
+          
+      return -1;
+   }
+    }
+
+    /// <summary>
+    /// Hides the console window for GUI mode
+    /// </summary>
+    static void HideConsoleWindow()
+    {
+        try
+        {
+ var consoleWindow = GetConsoleWindow();
+   if (consoleWindow != IntPtr.Zero)
+  {
+              ShowWindow(consoleWindow, SW_HIDE);
+          Logger.LogVerbose("Console window hidden for GUI mode");
+  }
+        }
+    catch (Exception ex)
+        {
+    // Log but don't fail if we can't hide console
+     Logger.LogVerbose($"Could not hide console window: {ex.Message}");
+     }
+    }
+
+    static bool IsAdmin()
+{
+   try
+  {
+            Logger.LogVerbose("Performing administrator privilege check");
+    
+          using var id = WindowsIdentity.GetCurrent();
+         Logger.LogVerbose($"Current Windows Identity: {id.Name}, Authentication Type: {id.AuthenticationType}");
+
+            var p = new WindowsPrincipal(id);
+     var isAdmin = p.IsInRole(WindowsBuiltInRole.Administrator);
+      
+         Logger.LogVerbose($"Administrator check result: {isAdmin}");
+
+      if (!isAdmin)
+         {
+            Logger.LogVerbose($"User is in roles: {string.Join(", ", GetUserRoles(p))}");
+   }
+        
+            return isAdmin;
+   }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Failed to check administrator privileges. Exception Type: {ex.GetType().Name}", ex);
+       // Default to false if we can't determine admin status
+      return false;
+        }
+    }
+    
+    static List<string> GetUserRoles(WindowsPrincipal principal)
+{
+        var roles = new List<string>();
+        
+        try
+        {
+            foreach (WindowsBuiltInRole role in Enum.GetValues(typeof(WindowsBuiltInRole)))
+            {
+            try
+       {
+          if (principal.IsInRole(role))
+       {
+            roles.Add(role.ToString());
+       }
+   }
+       catch
+       {
+      // Skip roles we can't check
+     }
+     }
+        }
+        catch (Exception ex)
+        {
+    Logger.LogVerbose($"Error enumerating user roles: {ex.Message}");
+        }
+      
+        return roles;
+}
+}
